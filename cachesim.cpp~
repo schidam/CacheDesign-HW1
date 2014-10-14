@@ -16,7 +16,6 @@ uint64_t *vc_index;
 int *vc_valid;
 int *vc_age;
 int vc_size;    //v
-int *vc_p_bit;
 
 int prefetch;   //k
 uint64_t LastMissBlockAddress = 0;
@@ -77,13 +76,11 @@ void setup_cache(uint64_t c, uint64_t b, uint64_t s, uint64_t v, uint64_t k) {
 	vc_index = new uint64_t[vc_lines];
 	vc_valid = new int[vc_lines];
 	vc_age = new int[vc_lines];
-	vc_p_bit = new int[vc_lines];
 	for(int i=0; i<vc_lines; i++) {
         vc_age[i] = 0;
         vc_tag[i] = 0;
         vc_index[i] = 0;
         vc_valid[i] = 0;
-        vc_p_bit[i] = 0;
     }
 
 	//set coloumns
@@ -135,10 +132,6 @@ void cache_access(char rw, uint64_t address, cache_stats_t* p_stats) {
         //IT'S A HIT
         //update LRU bits
         age[index][hit_set] = p_stats->accesses;
-        if(p_bit[index][hit_set] == 1) {
-            p_bit[index][hit_set] = 0;
-            p_stats->useful_prefetches++;
-        }
         if(rw == WRITE) {
             valid[index][hit_set] = 1;
             p_stats->writes++;
@@ -165,10 +158,6 @@ void cache_access(char rw, uint64_t address, cache_stats_t* p_stats) {
                 if(index == vc_index[i] && tag == vc_tag[i]) {
                     vc_hit = true;
                     vc_block = i;
-                    if(vc_p_bit[i]==1) {
-                        vc_p_bit[i] = 0;
-                        p_stats->useful_prefetches++;
-                    }
                     break;
                 }
             }
@@ -177,16 +166,13 @@ void cache_access(char rw, uint64_t address, cache_stats_t* p_stats) {
                 //swap blocks
                 uint64_t temp_tag = tag_store[index][lru_block];
                 int temp_valid = valid[index][lru_block];
-                int temp_p_bit = p_bit[index][lru_block];
 
                 tag_store[index][lru_block] = vc_tag[vc_block];
                 valid[index][lru_block] = vc_valid[vc_block];
-                p_bit[index][lru_block] = vc_p_bit[vc_block];
 
                 vc_tag[vc_block] = temp_tag;
                 vc_valid[vc_block] = temp_valid;
                 vc_index[vc_block] = index;
-                vc_p_bit[vc_block] = temp_p_bit;
                 //update LRU
                 age[index][lru_block] = p_stats->accesses;
                 //update vc fifo
@@ -225,7 +211,6 @@ void cache_access(char rw, uint64_t address, cache_stats_t* p_stats) {
                 vc_tag[first_in] = tag_store[index][lru_block];
                 vc_index[first_in] = index;
                 vc_valid[first_in] = valid[index][lru_block];
-                vc_p_bit[first_in] = p_bit[index][lru_block];
                 //Update vc FIFO
                 for(int i = 0; i<vc_size;i++){
                     vc_age[i]++;
@@ -234,7 +219,6 @@ void cache_access(char rw, uint64_t address, cache_stats_t* p_stats) {
                 // Put new block in cache
                 tag_store[index][lru_block] = tag;
                 valid[index][lru_block] = 0;
-                p_bit[index][lru_block] = 0;
                 //Update LRU bits
                 age[index][lru_block] = p_stats->accesses;
                 if(rw == 'w') {
@@ -297,16 +281,13 @@ void cache_access(char rw, uint64_t address, cache_stats_t* p_stats) {
                                 //swap blocks
                                 uint64_t temp_tag = tag_store[p_index][block];
                                 int temp_valid = valid[p_index][block];
-                                int temp_p_bit = valid[p_index][block];
 
                                 tag_store[p_index][block] = vc_tag[vc_block];
                                 valid[p_index][block] = vc_valid[vc_block];
-                                p_bit[p_index][block] = vc_p_bit[vc_block];
 
                                 vc_tag[vc_block] = temp_tag;
                                 vc_index[vc_block] = p_index;
                                 vc_valid[vc_block] = temp_valid;
-                                vc_p_bit[vc_block] = temp_p_bit;
 
                                 //update vc fifo
                                 for(int j=0; j<vc_size; j++) {
@@ -333,7 +314,6 @@ void cache_access(char rw, uint64_t address, cache_stats_t* p_stats) {
                                 vc_tag[first_in] = tag_store[p_index][block];
                                 vc_index[first_in] = p_index;
                                 vc_valid[first_in] = valid[p_index][block];
-                                vc_p_bit[first_in] = p_bit[p_index][block];
                                 //Update vc FIFO
                                 for(int j = 0; j < vc_size; j++){
                                     vc_age[j]++;
@@ -342,7 +322,6 @@ void cache_access(char rw, uint64_t address, cache_stats_t* p_stats) {
                                 // Put new block in cache
                                 tag_store[p_index][block] = p_tag;
                                 valid[p_index][block] = 0;
-                                p_bit[p_index][block] = 1;
                                 //Update Age to lru-1
                                 if(age[p_index][block] != 0) {
                                     age[p_index][block]--;
@@ -422,7 +401,6 @@ void cache_access(char rw, uint64_t address, cache_stats_t* p_stats) {
                             // Put prefetched block in cache
                             tag_store[p_index][block] = p_tag;
                             valid[p_index][block] = 0;
-                            p_bit[p_index][block] = 1;
                             //Update Age to lru-1
                             if(age[p_index][block] != 0) {
                                 age[p_index][block]--;
